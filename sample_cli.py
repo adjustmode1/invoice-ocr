@@ -27,7 +27,7 @@ def main():
         sys.exit(1)
 
     print(f"[*] Đang khởi tạo PaddleOCR (ngôn ngữ: {args.lang})...")
-    ocr = PaddleOCR(use_angle_cls=not args.no_angle, lang=args.lang, show_log=False)
+    ocr = PaddleOCR(use_angle_cls=not args.no_angle, lang=args.lang)
 
     print(f"[*] Đang nhận diện văn bản từ: {image_path}...")
     results = ocr.ocr(str(image_path), cls=not args.no_angle)

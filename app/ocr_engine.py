@@ -20,8 +20,7 @@ class OCREngine:
             logger.info(f"Initializing PaddleOCR instance for lang='{lang}', use_angle_cls={use_angle_cls}...")
             cls._instances[key] = PaddleOCR(
                 use_angle_cls=use_angle_cls,
-                lang=lang,
-                show_log=False
+                lang=lang
             )
             logger.info("PaddleOCR initialization completed.")
         return cls._instances[key]
