@@ -11,9 +11,13 @@ services:
     restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1
+      - FLAGS_use_mkldnn=0
+      - PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT=0
+      - FLAGS_enable_pir_in_executor=0
     volumes:
       # Mount model cache để giữ cache model nếu tải thêm model mới
       - paddle_models:/root/.paddleocr
+      - paddlex_models:/root/.paddlex
     # Cấu hình tài nguyên nếu cần giới hạn
     deploy:
       resources:
@@ -22,3 +26,4 @@ services:
 
 volumes:
   paddle_models:
+  paddlex_models:

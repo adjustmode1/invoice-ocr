@@ -6,7 +6,10 @@ ENV PYTHONUNBUFFERED=1 \
     DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    FLAGS_use_mkldnn=0 \
+    PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT=0 \
+    FLAGS_enable_pir_in_executor=0
 
 # Cài đặt các thư viện hệ thống cần thiết cho OpenCV và PaddlePaddle
 RUN apt-get update && apt-get install -y --no-install-recommends \

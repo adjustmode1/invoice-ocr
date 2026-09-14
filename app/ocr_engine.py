@@ -1,3 +1,9 @@
+import os
+# Fix CPU oneDNN / PIR instruction bug in PaddlePaddle 3.x
+os.environ["FLAGS_use_mkldnn"] = "0"
+os.environ["PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT"] = "0"
+os.environ["FLAGS_enable_pir_in_executor"] = "0"
+
 import io
 import logging
 from typing import Any, Dict, List, Optional
@@ -18,10 +24,18 @@ class OCREngine:
         key = f"{lang}_{use_angle_cls}"
         if key not in cls._instances:
             logger.info(f"Initializing PaddleOCR instance for lang='{lang}', use_angle_cls={use_angle_cls}...")
-            cls._instances[key] = PaddleOCR(
-                use_angle_cls=use_angle_cls,
-                lang=lang
-            )
+            # Try initializing with enable_mkldnn=False to bypass oneDNN CPU bug
+            try:
+                cls._instances[key] = PaddleOCR(
+                    use_angle_cls=use_angle_cls,
+                    lang=lang,
+                    enable_mkldnn=False
+                )
+            except (ValueError, TypeError):
+                cls._instances[key] = PaddleOCR(
+                    use_angle_cls=use_angle_cls,
+                    lang=lang
+                )
             logger.info("PaddleOCR initialization completed.")
         return cls._instances[key]
 

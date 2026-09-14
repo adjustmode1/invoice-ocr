@@ -4,6 +4,11 @@ Sử dụng:
     python sample_cli.py path/to/invoice.jpg --lang vi
 """
 
+import os
+os.environ["FLAGS_use_mkldnn"] = "0"
+os.environ["PADDLE_PDX_ENABLE_MKLDNN_BYDEFAULT"] = "0"
+os.environ["FLAGS_enable_pir_in_executor"] = "0"
+
 import argparse
 import json
 import sys
@@ -27,7 +32,10 @@ def main():
         sys.exit(1)
 
     print(f"[*] Đang khởi tạo PaddleOCR (ngôn ngữ: {args.lang})...")
-    ocr = PaddleOCR(use_angle_cls=not args.no_angle, lang=args.lang)
+    try:
+        ocr = PaddleOCR(use_angle_cls=not args.no_angle, lang=args.lang, enable_mkldnn=False)
+    except (ValueError, TypeError):
+        ocr = PaddleOCR(use_angle_cls=not args.no_angle, lang=args.lang)
 
     print(f"[*] Đang nhận diện văn bản từ: {image_path}...")
     try:
