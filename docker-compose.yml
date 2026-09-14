@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  invoice-ocr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: invoice_ocr_service
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      # Mount model cache để giữ cache model nếu tải thêm model mới
+      - paddle_models:/root/.paddleocr
+    # Cấu hình tài nguyên nếu cần giới hạn
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
+volumes:
+  paddle_models:
