@@ -30,20 +30,42 @@ def main():
     ocr = PaddleOCR(use_angle_cls=not args.no_angle, lang=args.lang)
 
     print(f"[*] Đang nhận diện văn bản từ: {image_path}...")
-    results = ocr.ocr(str(image_path), cls=not args.no_angle)
+    try:
+        results = ocr.ocr(str(image_path))
+    except TypeError:
+        results = ocr.predict(str(image_path))
 
     extracted_data = []
-    if results and results[0]:
-        print("\n--- KẾT QUẢ NHẬN DIỆN ---")
-        for idx, line in enumerate(results[0], 1):
-            box = line[0]
-            text, score = line[1]
-            print(f"[{idx:02d}] (Độ tin cậy: {score:.2f}) -> {text}")
-            extracted_data.append({
-                "text": text,
-                "confidence": round(float(score), 4),
-                "box": box
-            })
+    if results:
+        first_res = results[0]
+        res_dict = getattr(first_res, "res", first_res)
+        if isinstance(res_dict, dict) and ("dt_polys" in res_dict or "rec_texts" in res_dict or "rec_text" in res_dict):
+            dt_polys = res_dict.get("dt_polys", [])
+            rec_texts = res_dict.get("rec_texts", res_dict.get("rec_text", []))
+            rec_scores = res_dict.get("rec_scores", res_dict.get("rec_score", []))
+            print("\n--- KẾT QUẢ NHẬN DIỆN ---")
+            for idx, poly in enumerate(dt_polys, 1):
+                text = str(rec_texts[idx - 1]) if idx - 1 < len(rec_texts) else ""
+                score = float(rec_scores[idx - 1]) if idx - 1 < len(rec_scores) else 1.0
+                poly_list = poly.tolist() if hasattr(poly, "tolist") else poly
+                print(f"[{idx:02d}] (Độ tin cậy: {score:.2f}) -> {text}")
+                extracted_data.append({
+                    "text": text,
+                    "confidence": round(score, 4),
+                    "box": poly_list
+                })
+        elif isinstance(first_res, (list, tuple)):
+            print("\n--- KẾT QUẢ NHẬN DIỆN ---")
+            for idx, line in enumerate(first_res, 1):
+                if isinstance(line, (list, tuple)) and len(line) == 2:
+                    box = line[0]
+                    text, score = line[1]
+                    print(f"[{idx:02d}] (Độ tin cậy: {score:.2f}) -> {text}")
+                    extracted_data.append({
+                        "text": str(text),
+                        "confidence": round(float(score), 4),
+                        "box": box.tolist() if hasattr(box, "tolist") else box
+                    })
     else:
         print("Không phát hiện được đoạn văn bản nào trong ảnh.")
 
