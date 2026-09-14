@@ -15,28 +15,46 @@ logger = logging.getLogger("ocr_engine")
 
 class OCREngine:
     """
-    Wrapper for PaddleOCR engine with caching and structured output parsing.
+    Wrapper for PaddleOCR engine with caching, optional preprocessing,
+    auto-downscaling for speed, and structured output parsing.
     """
     _instances: Dict[str, PaddleOCR] = {}
 
     @classmethod
-    def get_ocr_instance(cls, lang: str = "vi", use_angle_cls: bool = True) -> PaddleOCR:
-        key = f"{lang}_{use_angle_cls}"
+    def get_ocr_instance(
+        cls,
+        lang: str = "vi",
+        use_angle_cls: bool = False,
+        use_unwarping: bool = False
+    ) -> PaddleOCR:
+        key = f"{lang}_{use_angle_cls}_{use_unwarping}"
         if key not in cls._instances:
-            logger.info(f"Initializing PaddleOCR instance for lang='{lang}', use_angle_cls={use_angle_cls}...")
-            # Try initializing with enable_mkldnn=False to bypass oneDNN CPU bug
+            logger.info(
+                f"Initializing PaddleOCR instance for lang='{lang}', "
+                f"angle_cls={use_angle_cls}, unwarping={use_unwarping}..."
+            )
+            # Try PaddleOCR 3.x with unwarping & orientation toggles
+            init_params = {
+                "lang": lang,
+                "enable_mkldnn": False,
+                "use_doc_orientation_classify": use_angle_cls,
+                "use_doc_unwarping": use_unwarping,
+                "use_textline_orientation": use_angle_cls,
+            }
             try:
-                cls._instances[key] = PaddleOCR(
-                    use_angle_cls=use_angle_cls,
-                    lang=lang,
-                    enable_mkldnn=False
-                )
+                cls._instances[key] = PaddleOCR(**init_params)
             except (ValueError, TypeError):
-                cls._instances[key] = PaddleOCR(
-                    use_angle_cls=use_angle_cls,
-                    lang=lang
-                )
-            logger.info("PaddleOCR initialization completed.")
+                # Fallback to standard 2.x parameters
+                try:
+                    cls._instances[key] = PaddleOCR(
+                        lang=lang,
+                        use_angle_cls=use_angle_cls,
+                        enable_mkldnn=False
+                    )
+                except (ValueError, TypeError):
+                    cls._instances[key] = PaddleOCR(lang=lang)
+
+            logger.info(f"PaddleOCR instance [{key}] initialized successfully.")
         return cls._instances[key]
 
     @classmethod
@@ -44,17 +62,38 @@ class OCREngine:
         cls,
         image_bytes: bytes,
         lang: str = "vi",
-        use_angle_cls: bool = True,
-        confidence_threshold: float = 0.0
+        use_angle_cls: bool = False,
+        use_unwarping: bool = False,
+        confidence_threshold: float = 0.0,
+        max_side_len: int = 1500
     ) -> Dict[str, Any]:
         """
-        Processes an image from bytes and returns structured OCR results.
+        Processes an image from bytes:
+        - Auto-downscales if larger than max_side_len (drastically reduces CPU compute)
+        - Maps bounding boxes back to original coordinates
+        - Skips expensive unwarping/angle models unless explicitly requested
         """
-        # Load image with PIL and convert to numpy array (RGB)
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        img_np = np.array(image)
+        orig_w, orig_h = image.width, image.height
 
-        ocr = cls.get_ocr_instance(lang=lang, use_angle_cls=use_angle_cls)
+        # Auto-downscale large images (e.g. 4000x3000 -> 1500x1125) to speed up OCR by 3-5x
+        scale = 1.0
+        if max_side_len and max_side_len > 0:
+            max_dim = max(orig_w, orig_h)
+            if max_dim > max_side_len:
+                scale = max_side_len / float(max_dim)
+                new_w = max(1, int(orig_w * scale))
+                new_h = max(1, int(orig_h * scale))
+                image = image.resize((new_w, new_h), Image.Resampling.BILINEAR)
+                logger.info(f"Downscaled image from {orig_w}x{orig_h} to {new_w}x{new_h} (scale={scale:.3f})")
+
+        img_np = np.array(image)
+        ocr = cls.get_ocr_instance(
+            lang=lang,
+            use_angle_cls=use_angle_cls,
+            use_unwarping=use_unwarping
+        )
+
         try:
             raw_results = ocr.ocr(img_np)
         except TypeError:
@@ -77,10 +116,12 @@ class OCREngine:
                     score = float(rec_scores[i]) if i < len(rec_scores) else 1.0
                     if score >= confidence_threshold:
                         poly_list = poly.tolist() if hasattr(poly, "tolist") else poly
+                        # Scale coordinates back to original image size
+                        scaled_box = [[int(round(pt[0] / scale)), int(round(pt[1] / scale))] for pt in poly_list]
                         lines.append({
                             "text": text,
                             "confidence": round(score, 4),
-                            "box": [[int(pt[0]), int(pt[1])] for pt in poly_list]
+                            "box": scaled_box
                         })
                         full_text_lines.append(text)
             # Check for classic PaddleOCR 2.x format: list of [[box, (text, score)], ...]
@@ -91,16 +132,20 @@ class OCREngine:
                         text, score = item[1]
                         if score >= confidence_threshold:
                             box_list = box.tolist() if hasattr(box, "tolist") else box
+                            scaled_box = [[int(round(pt[0] / scale)), int(round(pt[1] / scale))] for pt in box_list]
                             lines.append({
                                 "text": str(text),
                                 "confidence": round(float(score), 4),
-                                "box": [[int(pt[0]), int(pt[1])] for pt in box_list]
+                                "box": scaled_box
                             })
                             full_text_lines.append(str(text))
 
         return {
-            "image_width": image.width,
-            "image_height": image.height,
+            "image_width": orig_w,
+            "image_height": orig_h,
+            "processed_width": image.width,
+            "processed_height": image.height,
+            "scale_factor": round(scale, 4),
             "total_detected": len(lines),
             "full_text": "\n".join(full_text_lines),
             "lines": lines

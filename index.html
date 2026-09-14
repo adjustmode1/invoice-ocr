@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice OCR Tester - PaddleOCR</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    .drag-active { border-color: #3b82f6; background-color: #eff6ff; }
+    .canvas-container { position: relative; display: inline-block; }
+    #overlayCanvas { position: absolute; top: 0; left: 0; pointer-events: none; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+  <!-- Navbar -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="bg-blue-600 text-white p-2 rounded-lg">
+          <i class="fa-solid fa-file-invoice text-xl"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold text-slate-900 leading-tight">Invoice OCR Tester</h1>
+          <p class="text-xs text-slate-500">PaddleOCR Engine • Tiếng Việt & Multilingual</p>
+        </div>
+      </div>
+
+      <!-- Server Config -->
+      <div class="flex items-center space-x-2 bg-slate-100 p-1.5 rounded-lg border border-slate-200 text-sm">
+        <span class="text-xs font-semibold text-slate-500 pl-2">Server:</span>
+        <input id="serverUrl" type="text" value="http://14.225.254.83:8000" 
+               class="bg-white px-2.5 py-1 rounded border border-slate-300 text-xs w-60 focus:outline-blue-500 font-mono" />
+        <button id="btnCheckHealth" class="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-xs font-medium rounded transition flex items-center gap-1">
+          <i class="fa-solid fa-plug text-xs"></i> Check
+        </button>
+        <span id="healthStatusBadge" class="hidden text-xs px-2 py-0.5 rounded font-medium"></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 py-6">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- Left Column: Settings & Upload -->
+      <div class="lg:col-span-4 space-y-5">
+        
+        <!-- OCR Options Card -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+            <i class="fa-solid fa-sliders text-blue-500"></i> Cấu hình nhận diện
+          </h2>
+
+          <div class="space-y-3 text-sm">
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Ngôn ngữ (Language)</label>
+              <select id="langSelect" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-sm focus:outline-blue-500">
+                <option value="vi" selected>Tiếng Việt (vi)</option>
+                <option value="en">Tiếng Anh (en)</option>
+                <option value="ch">Tiếng Trung (ch)</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-slate-600 mb-1">Tối ưu kích thước ảnh (Speed Up)</label>
+              <select id="maxSideLenSelect" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-sm focus:outline-blue-500">
+                <option value="1500" selected>1500px (⚡ Siêu tốc - Khuyên dùng)</option>
+                <option value="2000">2000px (Cân bằng nét / tốc độ)</option>
+                <option value="0">Ảnh gốc (Không nén - Chậm)</option>
+              </select>
+            </div>
+
+            <div class="flex items-center justify-between pt-1">
+              <div>
+                <label for="angleCls" class="text-xs font-medium text-slate-700 block">Xoay chỉnh góc (Angle Cls)</label>
+                <span class="text-[11px] text-slate-400">Tắt để tăng tốc x2 (chỉ bật khi ảnh bị xoay)</span>
+              </div>
+              <input type="checkbox" id="angleCls" class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
+            </div>
+
+            <div>
+              <div class="flex justify-between text-xs font-medium text-slate-600 mb-1">
+                <span>Ngưỡng tin cậy (Confidence):</span>
+                <span id="thresholdVal" class="font-bold text-blue-600">0.30</span>
+              </div>
+              <input type="range" id="confidenceThreshold" min="0.0" max="1.0" step="0.05" value="0.30" 
+                     class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Upload Dropzone Card -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <h2 class="text-sm font-semibold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+            <i class="fa-solid fa-cloud-arrow-up text-blue-500"></i> Tải ảnh lên
+          </h2>
+
+          <div id="dropzone" class="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-xl p-6 text-center cursor-pointer transition flex flex-col items-center justify-center space-y-2 bg-slate-50 hover:bg-blue-50/50">
+            <div class="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xl">
+              <i class="fa-solid fa-image"></i>
+            </div>
+            <p class="text-sm font-medium text-slate-700">Kéo & thả ảnh vào đây</p>
+            <p class="text-xs text-slate-400">hoặc click để chọn file từ máy</p>
+            <p class="text-[11px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+              💡 Hỗ trợ dán trực tiếp ảnh từ Clipboard (Ctrl + V)
+            </p>
+            <input type="file" id="fileInput" accept="image/*" class="hidden" />
+          </div>
+
+          <button id="btnRunOcr" disabled class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-medium rounded-lg text-sm transition shadow-sm flex items-center justify-center gap-2">
+            <i class="fa-solid fa-bolt"></i>
+            <span>Bắt đầu nhận diện (OCR)</span>
+          </button>
+        </div>
+
+        <!-- Info / Tips -->
+        <div class="bg-blue-50/60 border border-blue-200 rounded-xl p-4 text-xs text-blue-800 space-y-2">
+          <p class="font-semibold flex items-center gap-1.5"><i class="fa-solid fa-circle-info"></i> Lưu ý kết nối:</p>
+          <p>Nếu gặp lỗi không thể kết nối tới server <code class="bg-blue-100 px-1 rounded">14.225.254.83:8000</code>, hãy kiểm tra firewall trên VPS/Cloud đã mở cổng <strong>8000</strong> chưa.</p>
+        </div>
+
+      </div>
+
+      <!-- Right Column: Visualizer & Results -->
+      <div class="lg:col-span-8 space-y-5">
+
+        <!-- Result Overview Stats -->
+        <div id="statsBar" class="hidden bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4 text-xs">
+          <div class="flex items-center gap-6">
+            <div>
+              <span class="text-slate-400 block">Số dòng phát hiện</span>
+              <span id="statLinesCount" class="text-base font-bold text-slate-800">0</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block">Kích thước ảnh</span>
+              <span id="statDimensions" class="text-base font-bold text-slate-800">0 x 0</span>
+            </div>
+            <div>
+              <span class="text-slate-400 block">Thời gian xử lý</span>
+              <span id="statTime" class="text-base font-bold text-blue-600">0 ms</span>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="btnCopyAllText" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded font-medium transition flex items-center gap-1">
+              <i class="fa-regular fa-copy"></i> Copy văn bản
+            </button>
+          </div>
+        </div>
+
+        <!-- Visual & Text Container -->
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <!-- Tabs -->
+          <div class="flex border-b border-slate-200 bg-slate-50 text-xs font-semibold">
+            <button class="tab-btn px-4 py-3 border-b-2 border-blue-600 text-blue-600 bg-white" data-tab="tab-visual">
+              <i class="fa-solid fa-crop-simple mr-1"></i> Khung nhận diện (Visual)
+            </button>
+            <button class="tab-btn px-4 py-3 text-slate-500 hover:text-slate-700" data-tab="tab-text">
+              <i class="fa-solid fa-align-left mr-1"></i> Toàn bộ văn bản (Full Text)
+            </button>
+            <button class="tab-btn px-4 py-3 text-slate-500 hover:text-slate-700" data-tab="tab-table">
+              <i class="fa-solid fa-table-list mr-1"></i> Chi tiết từng dòng (Table)
+            </button>
+            <button class="tab-btn px-4 py-3 text-slate-500 hover:text-slate-700" data-tab="tab-json">
+              <i class="fa-solid fa-code mr-1"></i> Dữ liệu JSON
+            </button>
+          </div>
+
+          <!-- Tab Contents -->
+          <div class="p-4">
+            
+            <!-- Tab 1: Visual -->
+            <div id="tab-visual" class="tab-content">
+              <div id="imagePlaceholder" class="py-16 text-center text-slate-400 border border-slate-100 rounded-lg">
+                <i class="fa-solid fa-file-image text-4xl mb-2 text-slate-300"></i>
+                <p>Chưa có ảnh nào được tải lên.</p>
+              </div>
+              <div id="imageDisplayWrapper" class="hidden overflow-auto max-h-[600px] text-center bg-slate-900/5 p-2 rounded-lg">
+                <div class="canvas-container inline-block">
+                  <img id="previewImg" class="max-w-full rounded shadow-sm block" alt="Preview" />
+                  <canvas id="overlayCanvas"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tab 2: Full Text -->
+            <div id="tab-text" class="tab-content hidden">
+              <textarea id="fullTextResult" rows="18" readonly 
+                        placeholder="Nội dung văn bản nhận diện sẽ hiển thị tại đây..."
+                        class="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm font-mono leading-relaxed focus:outline-none"></textarea>
+            </div>
+
+            <!-- Tab 3: Table -->
+            <div id="tab-table" class="tab-content hidden">
+              <div class="overflow-x-auto max-h-[500px]">
+                <table class="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr class="bg-slate-100 border-b border-slate-200 text-slate-600 font-semibold sticky top-0">
+                      <th class="p-2.5 w-12 text-center">#</th>
+                      <th class="p-2.5">Nội dung văn bản</th>
+                      <th class="p-2.5 w-28 text-center">Độ tin cậy</th>
+                      <th class="p-2.5 w-40 text-slate-400">Tọa độ (Box)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tableBody" class="divide-y divide-slate-200 font-mono">
+                    <tr><td colspan="4" class="p-6 text-center text-slate-400 font-sans">Chưa có kết quả</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Tab 4: JSON -->
+            <div id="tab-json" class="tab-content hidden">
+              <pre id="jsonResult" class="bg-slate-900 text-slate-100 p-4 rounded-lg text-xs overflow-auto max-h-[500px] font-mono">// JSON response will be displayed here</pre>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-800 text-white px-4 py-2.5 rounded-lg shadow-lg text-sm hidden transition-all duration-300 z-50 flex items-center gap-2"></div>
+
+  <script>
+    // State
+    let selectedFile = null;
+    let ocrData = null;
+
+    // Elements
+    const serverUrlInput = document.getElementById("serverUrl");
+    // Smart default: use current host if accessed via web, or fallback to remote server
+    if (window.location.origin && window.location.origin.startsWith("http")) {
+      serverUrlInput.value = window.location.origin;
+    } else {
+      serverUrlInput.value = "http://14.225.254.83:8000";
+    }
+    const btnCheckHealth = document.getElementById("btnCheckHealth");
+    const healthStatusBadge = document.getElementById("healthStatusBadge");
+    const langSelect = document.getElementById("langSelect");
+    const angleCls = document.getElementById("angleCls");
+    const confidenceThreshold = document.getElementById("confidenceThreshold");
+    const thresholdVal = document.getElementById("thresholdVal");
+    const dropzone = document.getElementById("dropzone");
+    const fileInput = document.getElementById("fileInput");
+    const btnRunOcr = document.getElementById("btnRunOcr");
+    const previewImg = document.getElementById("previewImg");
+    const overlayCanvas = document.getElementById("overlayCanvas");
+    const imagePlaceholder = document.getElementById("imagePlaceholder");
+    const imageDisplayWrapper = document.getElementById("imageDisplayWrapper");
+    const statsBar = document.getElementById("statsBar");
+    const statLinesCount = document.getElementById("statLinesCount");
+    const statDimensions = document.getElementById("statDimensions");
+    const statTime = document.getElementById("statTime");
+    const fullTextResult = document.getElementById("fullTextResult");
+    const tableBody = document.getElementById("tableBody");
+    const jsonResult = document.getElementById("jsonResult");
+    const btnCopyAllText = document.getElementById("btnCopyAllText");
+    const toast = document.getElementById("toast");
+
+    // Toast helper
+    function showToast(msg, isError = false) {
+      toast.innerHTML = `<i class="fa-solid ${isError ? 'fa-triangle-exclamation text-rose-400' : 'fa-check text-emerald-400'}"></i> <span>${msg}</span>`;
+      toast.classList.remove("hidden");
+      setTimeout(() => { toast.classList.add("hidden"); }, 3000);
+    }
+
+    // Confidence threshold label update
+    confidenceThreshold.addEventListener("input", (e) => {
+      thresholdVal.textContent = parseFloat(e.target.value).toFixed(2);
+    });
+
+    // Check Server Health
+    btnCheckHealth.addEventListener("click", async () => {
+      const baseUrl = serverUrlInput.value.trim().replace(/\/+$/, "");
+      btnCheckHealth.disabled = true;
+      btnCheckHealth.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
+      
+      try {
+        const res = await fetch(`${baseUrl}/health`, { method: "GET" });
+        if (res.ok) {
+          healthStatusBadge.className = "text-xs px-2 py-0.5 rounded font-medium bg-emerald-100 text-emerald-700 block";
+          healthStatusBadge.textContent = "Online";
+          showToast("Kết nối server thành công!");
+        } else {
+          throw new Error(`HTTP ${res.status}`);
+        }
+      } catch (err) {
+        healthStatusBadge.className = "text-xs px-2 py-0.5 rounded font-medium bg-rose-100 text-rose-700 block";
+        healthStatusBadge.textContent = "Offline / Lỗi";
+        showToast(`Không kết nối được: ${err.message}`, true);
+      } finally {
+        btnCheckHealth.disabled = false;
+        btnCheckHealth.innerHTML = `<i class="fa-solid fa-plug text-xs"></i> Check`;
+      }
+    });
+
+    // File Selection & Drag Drop
+    dropzone.addEventListener("click", () => fileInput.click());
+
+    fileInput.addEventListener("change", (e) => {
+      if (e.target.files.length > 0) handleFile(e.target.files[0]);
+    });
+
+    ['dragenter', 'dragover'].forEach(name => {
+      dropzone.addEventListener(name, (e) => { e.preventDefault(); dropzone.classList.add('drag-active'); });
+    });
+
+    ['dragleave', 'drop'].forEach(name => {
+      dropzone.addEventListener(name, (e) => { e.preventDefault(); dropzone.classList.remove('drag-active'); });
+    });
+
+    dropzone.addEventListener("drop", (e) => {
+      if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+    });
+
+    // Support Paste from Clipboard (Ctrl + V)
+    window.addEventListener("paste", (e) => {
+      const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+      for (const item of items) {
+        if (item.type.indexOf("image") === 0) {
+          const file = item.getAsFile();
+          handleFile(file);
+          showToast("Đã dán ảnh từ clipboard!");
+          break;
+        }
+      }
+    });
+
+    function handleFile(file) {
+      if (!file.type.startsWith("image/")) {
+        showToast("Vui lòng chỉ chọn file hình ảnh (JPG, PNG, WEBP)!", true);
+        return;
+      }
+      selectedFile = file;
+      btnRunOcr.disabled = false;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previewImg.src = e.target.result;
+        imagePlaceholder.classList.add("hidden");
+        imageDisplayWrapper.classList.remove("hidden");
+        
+        // Reset overlay
+        const ctx = overlayCanvas.getContext("2d");
+        ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Run OCR Request
+    btnRunOcr.addEventListener("click", async () => {
+      if (!selectedFile) return;
+
+      const baseUrl = serverUrlInput.value.trim().replace(/\/+$/, "");
+      const lang = langSelect.value;
+      const useAngle = angleCls.checked;
+      const threshold = confidenceThreshold.value;
+
+      btnRunOcr.disabled = true;
+      btnRunOcr.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Đang nhận diện OCR...`;
+      
+      const startTime = performance.now();
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+
+      try {
+        const maxSideLen = document.getElementById("maxSideLenSelect").value;
+        const url = `${baseUrl}/ocr?lang=${lang}&use_angle_cls=${useAngle}&use_unwarping=false&max_side_len=${maxSideLen}&confidence_threshold=${threshold}`;
+        const res = await fetch(url, { method: "POST", body: formData });
+
+        const endTime = performance.now();
+        const duration = Math.round(endTime - startTime);
+
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({ detail: res.statusText }));
+          throw new Error(errorData.detail || `Lỗi HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        ocrData = data.data;
+
+        renderResults(ocrData, duration);
+        showToast("Nhận diện thành công!");
+      } catch (err) {
+        showToast(`Lỗi OCR: ${err.message}`, true);
+        console.error(err);
+      } finally {
+        btnRunOcr.disabled = false;
+        btnRunOcr.innerHTML = `<i class="fa-solid fa-bolt"></i> <span>Bắt đầu nhận diện (OCR)</span>`;
+      }
+    });
+
+    function renderResults(data, duration) {
+      // 1. Stats
+      statsBar.classList.remove("hidden");
+      statLinesCount.textContent = data.total_detected;
+      statDimensions.textContent = `${data.image_width} x ${data.image_height}`;
+      statTime.textContent = `${duration} ms`;
+
+      // 2. Full Text
+      fullTextResult.value = data.full_text;
+
+      // 3. JSON
+      jsonResult.textContent = JSON.stringify(data, null, 2);
+
+      // 4. Table
+      if (data.lines.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="4" class="p-6 text-center text-slate-400 font-sans">Không nhận diện được đoạn văn bản nào.</td></tr>`;
+      } else {
+        tableBody.innerHTML = data.lines.map((line, idx) => {
+          const scorePercent = Math.round(line.confidence * 100);
+          let badgeColor = scorePercent > 80 ? 'text-emerald-700 bg-emerald-100' : (scorePercent > 50 ? 'text-amber-700 bg-amber-100' : 'text-rose-700 bg-rose-100');
+
+          return `
+            <tr class="hover:bg-slate-50 transition">
+              <td class="p-2.5 text-center text-slate-400 font-bold">${idx + 1}</td>
+              <td class="p-2.5 font-sans font-medium text-slate-800">${escapeHtml(line.text)}</td>
+              <td class="p-2.5 text-center">
+                <span class="px-2 py-0.5 rounded text-[11px] font-bold ${badgeColor}">
+                  ${(line.confidence * 100).toFixed(1)}%
+                </span>
+              </td>
+              <td class="p-2.5 text-[11px] text-slate-500">[${line.box[0].join(',')}]...</td>
+            </tr>
+          `;
+        }).join("");
+      }
+
+      // 5. Draw Bounding Boxes on Overlay Canvas
+      drawOverlay(data.lines, data.image_width, data.image_height);
+    }
+
+    function drawOverlay(lines, naturalWidth, naturalHeight) {
+      overlayCanvas.width = previewImg.clientWidth;
+      overlayCanvas.height = previewImg.clientHeight;
+
+      const scaleX = previewImg.clientWidth / naturalWidth;
+      const scaleY = previewImg.clientHeight / naturalHeight;
+
+      const ctx = overlayCanvas.getContext("2d");
+      ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+      lines.forEach((line) => {
+        const box = line.box;
+        ctx.beginPath();
+        ctx.moveTo(box[0][0] * scaleX, box[0][1] * scaleY);
+        for (let i = 1; i < box.length; i++) {
+          ctx.lineTo(box[i][0] * scaleX, box[i][1] * scaleY);
+        }
+        ctx.closePath();
+
+        // Polygon border
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "rgba(239, 68, 68, 0.9)";
+        ctx.stroke();
+
+        // Semi-transparent fill
+        ctx.fillStyle = "rgba(239, 68, 68, 0.15)";
+        ctx.fill();
+      });
+    }
+
+    window.addEventListener("resize", () => {
+      if (ocrData && previewImg.clientWidth > 0) {
+        drawOverlay(ocrData.lines, ocrData.image_width, ocrData.image_height);
+      }
+    });
+
+    previewImg.addEventListener("load", () => {
+      if (ocrData) {
+        drawOverlay(ocrData.lines, ocrData.image_width, ocrData.image_height);
+      }
+    });
+
+    // Copy text button
+    btnCopyAllText.addEventListener("click", () => {
+      if (!fullTextResult.value) return;
+      navigator.clipboard.writeText(fullTextResult.value).then(() => {
+        showToast("Đã copy toàn bộ nội dung!");
+      });
+    });
+
+    // Tab switching
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach(b => {
+          b.className = "tab-btn px-4 py-3 text-slate-500 hover:text-slate-700";
+        });
+        btn.className = "tab-btn px-4 py-3 border-b-2 border-blue-600 text-blue-600 bg-white font-semibold";
+
+        document.querySelectorAll(".tab-content").forEach(c => c.classList.add("hidden"));
+        const targetTab = btn.getAttribute("data-tab");
+        document.getElementById(targetTab).classList.remove("hidden");
+
+        // Redraw canvas if tab is visual
+        if (targetTab === "tab-visual" && ocrData) {
+          setTimeout(() => drawOverlay(ocrData.lines, ocrData.image_width, ocrData.image_height), 50);
+        }
+      });
+    });
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+      );
+    }
+  </script>
+</body>
+</html>

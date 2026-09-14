@@ -16,8 +16,8 @@ logger = logging.getLogger("main")
 
 app = FastAPI(
     title="Invoice OCR API (PaddleOCR)",
-    description="REST API for Document & Invoice OCR using PaddleOCR (Vietnamese/English supported)",
-    version="1.0.0"
+    description="REST API for Document & Invoice OCR using PaddleOCR (Optimized)",
+    version="1.1.0"
 )
 
 # CORS setup
@@ -31,10 +31,10 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Pre-warming OCR Engine with default language 'vi'...")
+    logger.info("Pre-warming fast Core OCR Engine (det + rec) with default language 'vi'...")
     try:
-        OCREngine.get_ocr_instance(lang="vi", use_angle_cls=True)
-        logger.info("OCR Engine pre-warmed successfully.")
+        OCREngine.get_ocr_instance(lang="vi", use_angle_cls=False, use_unwarping=False)
+        logger.info("Core OCR Engine pre-warmed successfully.")
     except Exception as e:
         logger.warning(f"Failed to pre-warm OCR model on startup: {e}")
 
@@ -51,11 +51,13 @@ def index():
 def health_check():
     return {"status": "healthy"}
 
-@app.post("/ocr", summary="Extract text and bounding boxes from image")
+@app.post("/ocr", summary="Extract text and bounding boxes from image (Fast & Optimized)")
 async def extract_ocr(
     file: UploadFile = File(..., description="Image file (JPG, PNG, WEBP, etc.)"),
-    lang: str = Query("vi", description="Language code: 'vi' (Vietnamese), 'en' (English), 'ch', etc."),
-    use_angle_cls: bool = Query(True, description="Enable orientation/angle classification"),
+    lang: str = Query("vi", description="Language code: 'vi', 'en', 'ch', etc."),
+    use_angle_cls: bool = Query(False, description="Enable orientation classification (slower)"),
+    use_unwarping: bool = Query(False, description="Enable document unwarping/dewarping (slower)"),
+    max_side_len: int = Query(1500, description="Auto-downscale max dimension to speed up OCR (0 to disable)"),
     confidence_threshold: float = Query(0.0, ge=0.0, le=1.0, description="Minimum confidence score threshold")
 ):
     if not file.content_type.startswith("image/"):
@@ -70,7 +72,9 @@ async def extract_ocr(
             image_bytes=contents,
             lang=lang,
             use_angle_cls=use_angle_cls,
-            confidence_threshold=confidence_threshold
+            use_unwarping=use_unwarping,
+            confidence_threshold=confidence_threshold,
+            max_side_len=max_side_len
         )
         return {
             "success": True,
@@ -86,7 +90,9 @@ async def extract_ocr(
 async def visualize_ocr(
     file: UploadFile = File(..., description="Image file"),
     lang: str = Query("vi"),
-    use_angle_cls: bool = Query(True)
+    use_angle_cls: bool = Query(False),
+    use_unwarping: bool = Query(False),
+    max_side_len: int = Query(1500)
 ):
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Invalid image file format")
@@ -96,7 +102,9 @@ async def visualize_ocr(
         results = OCREngine.process_image(
             image_bytes=contents,
             lang=lang,
-            use_angle_cls=use_angle_cls
+            use_angle_cls=use_angle_cls,
+            use_unwarping=use_unwarping,
+            max_side_len=max_side_len
         )
 
         image = Image.open(io.BytesIO(contents)).convert("RGB")
